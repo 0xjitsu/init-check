@@ -46,6 +46,10 @@ export const UI = {
     lang: "Tagalog",
     langLabel: "Switch to Tagalog",
     nowTag: "now",
+    nowSr: "current hour",
+    noMatches: "No matches. Try another spelling or a nearby city.",
+    laterDanger: (from: string, top: number) =>
+      `Heads up: the heat index reaches Danger from ${from} (up to ${top} °C). Finish outdoor tasks before then.`,
   },
   tl: {
     tagline: "Mga oras na ligtas sa init para sa anumang lungsod o bayan sa Pilipinas",
@@ -93,6 +97,10 @@ export const UI = {
     lang: "English",
     langLabel: "Switch to English",
     nowTag: "ngayon",
+    nowSr: "kasalukuyang oras",
+    noMatches: "Walang nahanap. Subukan ang ibang baybay o kalapit na lungsod.",
+    laterDanger: (from: string, top: number) =>
+      `Babala: aabot sa Danger ang heat index mula ${from} (hanggang ${top} °C). Tapusin ang gawain sa labas bago nito.`,
   },
 } as const;
 

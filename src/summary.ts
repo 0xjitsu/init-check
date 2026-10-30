@@ -1,11 +1,11 @@
 import type { HourPoint } from "./forecast";
 import type { Lang } from "./i18n";
 
-/** Waking hours we judge for outdoor activity: 5 AM up to (not incl.) 9 PM. */
-export const OUTDOOR_START = 5;
-export const OUTDOOR_END = 21;
-/** An hour is "safer" while the heat index stays under PAGASA's Extreme Caution (33 °C). */
-export const SAFE_BELOW_C = 33;
+/**
+ * An hour is "safer" while its band is Caution or lower (the heat index rounds to
+ * under PAGASA's Extreme Caution, 33 °C). This is the same value the strip colours by.
+ */
+export const isSafeHour = (h: HourPoint): boolean => h.band.level <= 1;
 
 export function peakHour(hours: HourPoint[]): HourPoint | null {
   return hours.reduce<HourPoint | null>((best, h) => (best && best.hi >= h.hi ? best : h), null);
@@ -31,13 +31,40 @@ function runsOf(hours: number[]): Run[] {
   return runs;
 }
 
-function describeRun(r: Run, lang: Lang): string {
-  const before = lang === "tl" ? "bago mag-" : "before ";
-  const after = lang === "tl" ? "pagkatapos ng " : "after ";
-  if (r.start <= OUTDOOR_START && r.end < OUTDOOR_END) return `${before}${formatHour(r.end, lang)}`;
-  if (r.end >= OUTDOOR_END && r.start > OUTDOOR_START) return `${after}${formatHour(r.start, lang)}`;
-  if (r.start <= OUTDOOR_START && r.end >= OUTDOOR_END) return lang === "tl" ? "buong araw" : "all day";
-  return `${formatHour(r.start, lang)}–${formatHour(r.end, lang)}`;
+/**
+ * Warning for hours after `afterHour` that reach Danger (level 3+) while the
+ * chosen hour is not already there. Returns null when there is nothing to add.
+ */
+export function laterDanger(
+  hours: HourPoint[],
+  afterHour: number,
+  currentLevel: number,
+): { from: string; top: number } | null {
+  if (currentLevel >= 3) return null;
+  const danger = hours.filter((h) => h.hour > afterHour && h.band.level >= 3);
+  if (danger.length === 0) return null;
+  return { from: formatHour(danger[0].hour), top: Math.max(...danger.map((h) => Math.round(h.hi))) };
+}
+
+/** Inclusive span: the last hour named is a full hour that is included. */
+function describeSpan(r: Run, lang: Lang): string {
+  const last = r.end - 1;
+  if (last === r.start) return formatHour(r.start);
+  return `${formatHour(r.start)}${lang === "tl" ? " hanggang " : " to "}${formatHour(last)}`;
+}
+
+/** `first` is the first hour considered; 24 is the end of the day. */
+function describeRun(r: Run, first: number, lang: Lang): string {
+  const tl = lang === "tl";
+  const startsAtEdge = r.start <= first;
+  const endsAtEdge = r.end >= 24;
+  if (startsAtEdge && endsAtEdge) {
+    if (first > 0) return tl ? "buong natitirang araw" : "the rest of the day";
+    return tl ? "buong araw" : "all day";
+  }
+  if (startsAtEdge) return `${tl ? "bago mag-" : "before "}${formatHour(r.end)}`;
+  if (endsAtEdge) return `${tl ? "mula " : "from "}${formatHour(r.start)}`;
+  return describeSpan(r, lang);
 }
 
 function joinList(parts: string[], lang: Lang): string {
@@ -47,8 +74,8 @@ function joinList(parts: string[], lang: Lang): string {
 }
 
 /**
- * One-sentence safe-window summary for a day. `fromHour` skips hours already
- * past (used for today).
+ * One-sentence safe-window summary for a day. Covers every displayed hour
+ * (12 AM to 11 PM); `fromHour` skips hours already past (used for today).
  */
 export function safeWindowSentence(
   hours: HourPoint[],
@@ -56,23 +83,24 @@ export function safeWindowSentence(
   lang: Lang,
   fromHour = 0,
 ): string {
-  const window = hours.filter((h) => h.hour >= Math.max(OUTDOOR_START, fromHour) && h.hour < OUTDOOR_END);
+  const window = hours.filter((h) => h.hour >= fromHour);
   if (window.length === 0) {
     return lang === "tl"
-      ? `Wala nang natitirang oras sa labas ${dayLabel}; tingnan ang susunod na araw.`
-      : `No outdoor hours left ${dayLabel}; check the next day.`;
+      ? `Wala nang natitirang oras ${dayLabel}; tingnan ang susunod na araw.`
+      : `No hours left ${dayLabel}; check the next day.`;
   }
-  const safe = window.filter((h) => h.hi < SAFE_BELOW_C).map((h) => h.hour);
+  const first = window[0].hour;
+  const safe = window.filter(isSafeHour).map((h) => h.hour);
   if (safe.length > 0) {
-    const text = joinList(runsOf(safe).map((r) => describeRun(r, lang)), lang);
+    const text = joinList(runsOf(safe).map((r) => describeRun(r, first, lang)), lang);
     return lang === "tl"
       ? `Pinakaligtas na oras sa labas ${dayLabel}: ${text}.`
       : `Safest outdoor hours ${dayLabel}: ${text}.`;
   }
-  // No hour is under 33 °C: point to the coolest stretch instead.
-  const min = Math.min(...window.map((h) => h.hi));
-  const coolest = window.filter((h) => h.hi <= min + 1).map((h) => h.hour);
-  const text = joinList(runsOf(coolest).map((r) => describeRun(r, lang)), lang);
+  // No hour is Caution or lower: name the coolest stretch as one phrase.
+  const min = Math.min(...window.map((h) => Math.round(h.hi)));
+  const coolest = window.filter((h) => Math.round(h.hi) <= min + 1).map((h) => h.hour);
+  const text = joinList(runsOf(coolest).map((r) => describeSpan(r, lang)), lang);
   return lang === "tl"
     ? `Walang oras na mababa sa 33 °C ${dayLabel}. Pinakamalamig: ${text}; magpahinga nang madalas.`
     : `No hour stays under 33 °C ${dayLabel}. Coolest: ${text}; take frequent breaks.`;

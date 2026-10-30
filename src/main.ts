@@ -4,7 +4,8 @@ import { BANDS } from "./bands";
 import { DEFAULT_PLACE, DONATE_URL } from "./config";
 import { fetchForecast, manilaNow, type Day, type HourPoint } from "./forecast";
 import { UI, WEEKDAYS, type Lang } from "./i18n";
-import { formatHour, peakHour, safeWindowSentence } from "./summary";
+import { enterIndex, moveActive } from "./combobox";
+import { formatHour, laterDanger, peakHour, safeWindowSentence } from "./summary";
 
 type Place = { name: string; lat: number; lon: number; region: string };
 
@@ -22,6 +23,17 @@ const state: State = { lang: "en", place: null, days: [], dayIndex: 0, hourIndex
 let places: Place[] = [];
 let controller: AbortController | null = null;
 const app = document.getElementById("app") as HTMLElement;
+/** Set when the strip should centre on the selected hour after the next render. */
+let scrollToSelected = false;
+/** Sentence for the live region; empty when no results are shown. */
+let currentSentence = "";
+
+/** Persistent screen-reader live region: announces only the safe-window sentence. */
+const live = document.createElement("p");
+live.className = "sr";
+live.setAttribute("aria-live", "polite");
+live.setAttribute("aria-atomic", "true");
+document.body.appendChild(live);
 
 const esc = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string);
@@ -82,6 +94,7 @@ async function selectPlace(place: Place): Promise<void> {
     state.dayIndex = 0;
     state.hourIndex = defaultHour(state.days[0], true);
     state.status = "ready";
+    scrollToSelected = true;
   } catch (e) {
     if ((e as Error).name === "AbortError") return;
     state.status = "error";
@@ -127,10 +140,10 @@ function renderHeader(): string {
       <div class="row">
         <input id="q" type="search" autocomplete="off" inputmode="search" placeholder="${esc(t.searchPlaceholder)}"
           value="${esc(state.place && state.place.region ? state.place.name : "")}"
-          role="combobox" aria-expanded="false" aria-controls="results" />
+          role="combobox" aria-expanded="false" aria-controls="results" aria-autocomplete="list" aria-haspopup="listbox" />
         <button type="button" id="loc">${esc(t.useLocation)}</button>
       </div>
-      <ul id="results" role="listbox" hidden></ul>
+      <ul id="results" role="listbox" aria-label="${esc(t.searchLabel)}" hidden></ul>
       <p class="note" id="note" role="status">${esc(state.note)}</p>
     </div>`;
 }
@@ -140,10 +153,13 @@ function renderStrip(day: Day, selected: number): string {
   const now = day.date === manilaNow().date ? manilaNow().hour : -1;
   const cells = day.hours
     .map((h, i) => {
-      const label = `${formatHour(h.hour)}: ${Math.round(h.hi)} °C, ${bandName(h, lang)}`;
-      return `<button type="button" class="cell${i === selected ? " sel" : ""}${h.hour === now ? " now" : ""}"
+      const isNow = h.hour === now;
+      const label = `${formatHour(h.hour)}: ${Math.round(h.hi)} °C, ${bandName(h, lang)}${isNow ? `, ${UI[lang].nowSr}` : ""}`;
+      return `<button type="button" class="cell${i === selected ? " sel" : ""}${isNow ? " now" : ""}"
         data-i="${i}" style="--bg:${h.band.color};--fg:${h.band.text}" aria-label="${esc(label)}" aria-pressed="${i === selected}">
-        <span class="v">${Math.round(h.hi)}</span><span class="h">${h.hour % 3 === 0 || i === selected ? formatHour(h.hour) : ""}</span>
+        <span class="v">${Math.round(h.hi)}</span><span class="h">${h.hour % 3 === 0 || i === selected ? formatHour(h.hour) : ""}</span>${
+          isNow ? `<span class="nt" aria-hidden="true">${esc(UI[lang].nowTag)}</span>` : ""
+        }
       </button>`;
     })
     .join("");
@@ -160,6 +176,9 @@ function renderResults(): string {
   const fromHour = isToday ? manilaNow().hour : 0;
   const peak = peakHour(day.hours);
   const place = state.place as Place;
+  const sentence = safeWindowSentence(day.hours, label, lang, fromHour);
+  currentSentence = `${place.name}: ${sentence}`;
+  const danger = laterDanger(day.hours, hour.hour, hour.band.level);
 
   const tabs = state.days
     .map(
@@ -177,10 +196,10 @@ function renderResults(): string {
   ).join("");
 
   return `
-    <section class="result" aria-live="polite">
+    <section class="result">
       <h2>${esc(place.name)}${place.region ? `<span class="region">${esc(place.region)}</span>` : ""}</h2>
       <div class="tabs" role="tablist">${tabs}</div>
-      <p class="safe">${esc(safeWindowSentence(day.hours, label, lang, fromHour))}</p>
+      <p class="safe" aria-hidden="true">${esc(sentence)}</p>
       ${peak ? `<p class="peak">${esc(t.peakLine(formatHour(peak.hour), Math.round(peak.hi), bandName(peak, lang)))}</p>` : ""}
       ${renderStrip(day, state.hourIndex)}
       <div class="detail" style="--bc:${hour.band.color}">
@@ -196,6 +215,7 @@ function renderResults(): string {
       </div>
       <h2 class="adv">${esc(t.adviceTitle)}</h2>
       <p class="advfor">${esc(t.adviceFor(formatHour(hour.hour), bandName(hour, lang)))}</p>
+      ${danger ? `<p class="warn" role="note">${esc(t.laterDanger(danger.from, danger.top))}</p>` : ""}
       <div class="cards">${advice}</div>
       <p class="note">${esc(t.forecastNote)}</p>
     </section>`;
@@ -239,15 +259,34 @@ function renderFooter(): string {
 }
 
 function render(): void {
-  const hadFocus = document.activeElement?.id === "q";
+  const active = document.activeElement as HTMLElement | null;
+  const hadFocus = active?.id === "q";
   const q = (document.getElementById("q") as HTMLInputElement | null)?.value;
+  // Remember which button had focus so a re-render does not drop it.
+  const focusSel = active?.classList.contains("cell")
+    ? `.cell[data-i="${active.dataset.i}"]`
+    : active?.classList.contains("tab")
+      ? `.tab[data-day="${active.dataset.day}"]`
+      : active?.id && active.id !== "q"
+        ? `#${active.id}`
+        : "";
+  currentSentence = "";
   app.innerHTML = `${renderHeader()}<div id="out">${renderStatus()}</div>${renderLegend()}${renderFooter()}`;
   document.documentElement.lang = state.lang === "tl" ? "fil" : "en";
   const input = document.getElementById("q") as HTMLInputElement;
   if (hadFocus && q !== undefined) {
     input.value = q;
     input.focus();
+  } else if (focusSel) {
+    app.querySelector<HTMLElement>(focusSel)?.focus({ preventScroll: true });
   }
+  if (scrollToSelected) {
+    scrollToSelected = false;
+    const strip = app.querySelector<HTMLElement>(".strip");
+    const cell = strip?.querySelector<HTMLElement>(".cell.sel");
+    if (strip && cell) strip.scrollLeft = cell.offsetLeft - (strip.clientWidth - cell.offsetWidth) / 2;
+  }
+  if (live.textContent !== currentSentence) live.textContent = currentSentence;
   bind();
 }
 
@@ -267,25 +306,73 @@ function search(term: string): Place[] {
 function bind(): void {
   const input = document.getElementById("q") as HTMLInputElement;
   const list = document.getElementById("results") as HTMLUListElement;
+  const note = document.getElementById("note") as HTMLElement;
   let matches: Place[] = [];
+  let active = -1;
 
+  const setActive = (i: number) => {
+    active = i;
+    list.querySelectorAll<HTMLElement>("[role=option]").forEach((li, n) => {
+      li.setAttribute("aria-selected", String(n === i));
+      li.classList.toggle("active", n === i);
+    });
+    if (i >= 0) {
+      input.setAttribute("aria-activedescendant", `opt-${i}`);
+      document.getElementById(`opt-${i}`)?.scrollIntoView({ block: "nearest" });
+    } else {
+      input.removeAttribute("aria-activedescendant");
+    }
+  };
+  const close = () => {
+    list.hidden = true;
+    input.setAttribute("aria-expanded", "false");
+    setActive(-1);
+  };
+  const open = () => {
+    list.hidden = matches.length === 0;
+    input.setAttribute("aria-expanded", String(matches.length > 0));
+  };
+  const pick = (i: number) => {
+    const p = matches[i];
+    if (!p) return;
+    input.value = p.name;
+    close();
+    void selectPlace(p);
+  };
+
+  input.addEventListener("focus", () => input.select());
   input.addEventListener("input", () => {
     matches = search(input.value);
     list.innerHTML = matches
-      .map((p, i) => `<li role="option" data-i="${i}">${esc(p.name)}<span>${esc(p.region)}</span></li>`)
+      .map((p, i) => `<li role="option" id="opt-${i}" aria-selected="false" data-i="${i}">${esc(p.name)}<span>${esc(p.region)}</span></li>`)
       .join("");
-    list.hidden = matches.length === 0;
-    input.setAttribute("aria-expanded", String(matches.length > 0));
+    setActive(-1);
+    open();
+    note.textContent = input.value.trim() && matches.length === 0 ? UI[state.lang].noMatches : state.note;
   });
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && matches[0]) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (matches.length === 0) return;
       e.preventDefault();
-      void selectPlace(matches[0]);
+      if (list.hidden) open();
+      setActive(moveActive(active, e.key, matches.length));
+    } else if (e.key === "Enter") {
+      const i = enterIndex(active, list.hidden ? 0 : matches.length);
+      if (i >= 0) {
+        e.preventDefault();
+        pick(i);
+      }
+    } else if (e.key === "Escape" && !list.hidden) {
+      e.preventDefault();
+      close();
     }
   });
+  input.addEventListener("blur", () => close());
+  // Keep focus in the input while clicking an option.
+  list.addEventListener("mousedown", (e) => e.preventDefault());
   list.addEventListener("click", (e) => {
     const li = (e.target as HTMLElement).closest("li");
-    if (li) void selectPlace(matches[Number(li.dataset.i)]);
+    if (li) pick(Number(li.dataset.i));
   });
 
   document.getElementById("loc")?.addEventListener("click", useMyLocation);
@@ -303,6 +390,7 @@ function bind(): void {
     b.addEventListener("click", () => {
       state.dayIndex = Number(b.dataset.day);
       state.hourIndex = defaultHour(state.days[state.dayIndex], state.dayIndex === 0);
+      scrollToSelected = true;
       render();
     }),
   );

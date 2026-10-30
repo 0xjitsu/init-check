@@ -77,6 +77,12 @@ footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--line);
 footer p { margin: 6px 0; }
 .disclaimer { font-weight: 600; color: var(--ink); }
 
+.sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+#results li[aria-selected="true"] { background: #ffe2c2; outline: 2px solid #2563eb; outline-offset: -2px; }
+.strip { position: relative; }
+.cell .nt { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; line-height: 1; }
+.warn { margin: 0 0 10px; padding: 10px 12px; border-left: 6px solid #dc2626; background: #fff1f1; border-radius: 8px; font-weight: 600; }
+
 @media (max-width: 520px) {
   h1 { font-size: 1.4rem; }
   .strip { grid-template-columns: repeat(24, 40px); }

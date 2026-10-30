@@ -67,7 +67,7 @@ for lv, label in LEGEND:
     text(label, lx + 30, 527, 22, "f3d9c9", FONT_REG)
     lx += 30 + len(label) * 11 + 28
 
-text("Safest outdoor hours today  -  before 8 AM and after 7 PM", 72, 574, 34, "ffffff", FONT, 5.2)
+text("Safest outdoor hours today  -  before 8 AM and from 7 PM", 72, 574, 34, "ffffff", FONT, 5.2)
 
 f.append(f"[{cur}]format=yuv420p[out]")
 
