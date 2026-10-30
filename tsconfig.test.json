@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node10",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "esModuleInterop": true,
+    "outDir": ".test-build",
+    "rootDir": ".",
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["tests", "src/heat.ts", "src/bands.ts", "src/forecast.ts", "src/summary.ts", "src/advice.ts", "src/i18n.ts"]
+}
