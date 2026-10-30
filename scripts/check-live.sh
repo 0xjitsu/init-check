@@ -14,7 +14,7 @@ fail=0
 ok() { echo "ok   $1"; }
 bad() { echo "FAIL $1"; fail=1; }
 
-html="$(curl -fsSL --max-time 30 "$URL/")" || { echo "FAIL could not fetch $URL/"; exit 1; }
+html="$(curl -fsSL --max-time 30 "$URL/" | tr '\n\r' '  ')" || { echo "FAIL could not fetch $URL/"; exit 1; }
 
 for tag in og:title og:description og:image og:video og:video:secure_url og:video:type og:video:width og:video:height \
            twitter:card twitter:player twitter:player:width twitter:player:height; do

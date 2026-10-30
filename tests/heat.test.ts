@@ -141,7 +141,8 @@ test("safe-window sentence falls back to the coolest hours when none is under 33
 
 test("later Danger hours produce a warning only when the chosen hour is below Danger", () => {
   const hours = hoursWith({ 13: 44, 14: 45 }, 34);
-  assert.deepEqual(laterDanger(hours, 9, 2), { from: "1 PM", top: 45 });
+  const warn = laterDanger(hours, 9, 2);
+  assert.deepEqual({ from: warn?.from, top: warn?.top, band: warn?.band.key }, { from: "1 PM", top: 45, band: "danger" });
   assert.equal(laterDanger(hours, 15, 2), null);
   assert.equal(laterDanger(hours, 13, 3), null);
 });
@@ -173,4 +174,32 @@ test("safe-window sentence skips hours already past", () => {
   const hours = hoursWith({}, 30);
   assert.match(safeWindowSentence(hours, "today", "en", 22), /the rest of the day/);
   assert.match(safeWindowSentence(hours, "today", "en", 24), /No hours left/);
+});
+
+test("a single last safe hour reads 'at', and a longer run reads 'from'", () => {
+  const one = hoursWith({}, 40);
+  one[23].hi = 30;
+  one[23].band = bandFor(30);
+  assert.equal(safeWindowSentence(one, "today", "en"), "Safest outdoor hours today: at 11 PM.");
+  const two = hoursWith({}, 40);
+  for (const i of [22, 23]) {
+    two[i].hi = 30;
+    two[i].band = bandFor(30);
+  }
+  assert.equal(safeWindowSentence(two, "today", "en"), "Safest outdoor hours today: from 10 PM.");
+});
+
+test("later-danger warning reports the peak band", () => {
+  const hours = hoursWith({ 13: 44, 14: 53 }, 34);
+  assert.equal(laterDanger(hours, 9, 2)?.band.key, "extreme-danger");
+});
+
+test("the Coolest line names at most three stretches", () => {
+  const hours = hoursWith({}, 40);
+  for (const i of [1, 4, 7, 10, 13]) {
+    hours[i].hi = 35;
+    hours[i].band = bandFor(35);
+  }
+  const s = safeWindowSentence(hours, "today", "en");
+  assert.equal((s.match(/ AM| PM/g) ?? []).length, 3);
 });

@@ -199,7 +199,7 @@ function renderResults(): string {
     <section class="result">
       <h2>${esc(place.name)}${place.region ? `<span class="region">${esc(place.region)}</span>` : ""}</h2>
       <div class="tabs" role="tablist">${tabs}</div>
-      <p class="safe" aria-hidden="true">${esc(sentence)}</p>
+      <p class="safe">${esc(sentence)}</p>
       ${peak ? `<p class="peak">${esc(t.peakLine(formatHour(peak.hour), Math.round(peak.hi), bandName(peak, lang)))}</p>` : ""}
       ${renderStrip(day, state.hourIndex)}
       <div class="detail" style="--bc:${hour.band.color}">
@@ -215,7 +215,7 @@ function renderResults(): string {
       </div>
       <h2 class="adv">${esc(t.adviceTitle)}</h2>
       <p class="advfor">${esc(t.adviceFor(formatHour(hour.hour), bandName(hour, lang)))}</p>
-      ${danger ? `<p class="warn" role="note">${esc(t.laterDanger(danger.from, danger.top))}</p>` : ""}
+      ${danger ? `<p class="warn" role="note">${esc(t.laterDanger(danger.from, danger.top, danger.band.name.en))}</p>` : ""}
       <div class="cards">${advice}</div>
       <p class="note">${esc(t.forecastNote)}</p>
     </section>`;
@@ -271,7 +271,7 @@ function render(): void {
         ? `#${active.id}`
         : "";
   currentSentence = "";
-  app.innerHTML = `${renderHeader()}<div id="out">${renderStatus()}</div>${renderLegend()}${renderFooter()}`;
+  app.innerHTML = `<main>${renderHeader()}<div id="out">${renderStatus()}</div>${renderLegend()}</main>${renderFooter()}`;
   document.documentElement.lang = state.lang === "tl" ? "fil" : "en";
   const input = document.getElementById("q") as HTMLInputElement;
   if (hadFocus && q !== undefined) {

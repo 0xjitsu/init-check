@@ -2,7 +2,9 @@
 Usage: python3 -I scripts/build-places.py PH.zip
 """
 import json
+import re
 import sys
+import unicodedata
 import zipfile
 
 REGION = {
@@ -27,21 +29,32 @@ EXTRA = [
 rows, seen = [], set()
 
 
+def base(name):
+    """Name without accents or 'City of' / 'City'; a province qualifier is kept."""
+    n = "".join(c for c in unicodedata.normalize("NFD", name.lower()) if not unicodedata.combining(c))
+    n = re.sub(r"^city of ", "", n)
+    return re.sub(r" city$", "", n.strip())
+
+
 def add(name, lat, lon, adm):
-    key = (name.lower(), REGION.get(adm, ""))
+    key = (base(name), REGION.get(adm, ""))
     if key in seen:
+        return
+    # Same place filed under a neighbouring region (e.g. Muntinlupa): keep the first.
+    if any(base(r[0]) == key[0] and abs(r[1] - float(lat)) + abs(r[2] - float(lon)) < 0.1 for r in rows):
         return
     seen.add(key)
     rows.append([name, round(float(lat), 4), round(float(lon), 4), REGION.get(adm, "")])
 
 
 text = zipfile.ZipFile(sys.argv[1]).read("PH.txt").decode()
+# EXTRA first, so its clean spellings win over GeoNames variants of the same place.
+for e in EXTRA:
+    add(*e)
 for line in text.split("\n"):
     f = line.split("\t")
     if len(f) > 10 and f[6] == "P" and f[7] in KEEP:
         add(f[2] or f[1], f[4], f[5], f[10])
-for e in EXTRA:
-    add(*e)
 rows.sort(key=lambda r: r[0])
 with open("public/data/places.json", "w", encoding="utf8") as out:
     json.dump(rows, out, ensure_ascii=False, separators=(",", ":"))

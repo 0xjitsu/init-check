@@ -1,3 +1,4 @@
+import type { Band } from "./bands";
 import type { HourPoint } from "./forecast";
 import type { Lang } from "./i18n";
 
@@ -15,6 +16,8 @@ export function formatHour(hour: number, _lang?: Lang): string {
   const h12 = hour % 12 === 0 ? 12 : hour % 12;
   return `${h12} ${hour % 24 < 12 ? "AM" : "PM"}`;
 }
+
+const MAX_COOLEST_RUNS = 3;
 
 interface Run {
   start: number;
@@ -39,11 +42,12 @@ export function laterDanger(
   hours: HourPoint[],
   afterHour: number,
   currentLevel: number,
-): { from: string; top: number } | null {
+): { from: string; top: number; band: Band } | null {
   if (currentLevel >= 3) return null;
   const danger = hours.filter((h) => h.hour > afterHour && h.band.level >= 3);
   if (danger.length === 0) return null;
-  return { from: formatHour(danger[0].hour), top: Math.max(...danger.map((h) => Math.round(h.hi))) };
+  const top = peakHour(danger) as HourPoint;
+  return { from: formatHour(danger[0].hour), top: Math.round(top.hi), band: top.band };
 }
 
 /** Inclusive span: the last hour named is a full hour that is included. */
@@ -63,7 +67,10 @@ function describeRun(r: Run, first: number, lang: Lang): string {
     return tl ? "buong araw" : "all day";
   }
   if (startsAtEdge) return `${tl ? "bago mag-" : "before "}${formatHour(r.end)}`;
-  if (endsAtEdge) return `${tl ? "mula " : "from "}${formatHour(r.start)}`;
+  if (endsAtEdge) {
+    if (r.end - r.start === 1) return `${tl ? "sa " : "at "}${formatHour(r.start)}`;
+    return `${tl ? "mula " : "from "}${formatHour(r.start)}`;
+  }
   return describeSpan(r, lang);
 }
 
@@ -100,7 +107,12 @@ export function safeWindowSentence(
   // No hour is Caution or lower: name the coolest stretch as one phrase.
   const min = Math.min(...window.map((h) => Math.round(h.hi)));
   const coolest = window.filter((h) => Math.round(h.hi) <= min + 1).map((h) => h.hour);
-  const text = joinList(runsOf(coolest).map((r) => describeSpan(r, lang)), lang);
+  // Keep the line short: name at most MAX_COOLEST_RUNS stretches, longest first, shown in time order.
+  const runs = runsOf(coolest)
+    .sort((a, b) => b.end - b.start - (a.end - a.start) || a.start - b.start)
+    .slice(0, MAX_COOLEST_RUNS)
+    .sort((a, b) => a.start - b.start);
+  const text = joinList(runs.map((r) => describeSpan(r, lang)), lang);
   return lang === "tl"
     ? `Walang oras na mababa sa 33 °C ${dayLabel}. Pinakamalamig: ${text}; magpahinga nang madalas.`
     : `No hour stays under 33 °C ${dayLabel}. Coolest: ${text}; take frequent breaks.`;

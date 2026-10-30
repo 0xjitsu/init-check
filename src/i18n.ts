@@ -48,8 +48,8 @@ export const UI = {
     nowTag: "now",
     nowSr: "current hour",
     noMatches: "No matches. Try another spelling or a nearby city.",
-    laterDanger: (from: string, top: number) =>
-      `Heads up: the heat index reaches Danger from ${from} (up to ${top} °C). Finish outdoor tasks before then.`,
+    laterDanger: (from: string, top: number, band: string) =>
+      `Heads up: the heat index reaches ${band} from ${from} (up to ${top} °C). Finish outdoor tasks before then.`,
   },
   tl: {
     tagline: "Mga oras na ligtas sa init para sa anumang lungsod o bayan sa Pilipinas",
@@ -99,8 +99,8 @@ export const UI = {
     nowTag: "ngayon",
     nowSr: "kasalukuyang oras",
     noMatches: "Walang nahanap. Subukan ang ibang baybay o kalapit na lungsod.",
-    laterDanger: (from: string, top: number) =>
-      `Babala: aabot sa Danger ang heat index mula ${from} (hanggang ${top} °C). Tapusin ang gawain sa labas bago nito.`,
+    laterDanger: (from: string, top: number, band: string) =>
+      `Babala: aabot sa ${band} ang heat index mula ${from} (hanggang ${top} °C). Tapusin ang gawain sa labas bago nito.`,
   },
 } as const;
 
