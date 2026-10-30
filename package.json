@@ -1,10 +1,20 @@
 {
   "name": "init-check",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Init Check: hourly heat index and heat-safe hours for Philippine cities",
+  "license": "MIT",
   "scripts": {
-    "lint": "echo 'TODO: real lint (set up by builder)'",
-    "build": "mkdir -p dist && cp -r public/. dist/",
-    "smoke": "test -f dist/index.html"
+    "dev": "vite",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && node --test .test-build/tests/",
+    "build": "vite build",
+    "smoke": "node scripts/smoke.mjs",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^6.0.0"
   }
 }
